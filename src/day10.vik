@@ -1,0 +1,427 @@
+import "../../../src/libvik/prelude.vik"
+import File, FileResult in "../../../src/libvik/file.vik"
+import u32_parse, ensure_trailing_char in "common.vik"
+
+fn find_least_presses_indicator(indicator: u16, buttons: [u16], s: uint): uint {
+    let n = buttons.len()
+    if s == n return 0
+    
+    for i in s..n {
+        if buttons[i] == indicator return 1
+    }
+
+    let best = uint.MAX
+    
+    for i in s..n {
+        let result = find_least_presses_indicator(buttons[i] ^ indicator, buttons, i + 1)
+        if result != 0 {
+            let total = result + 1
+            if total < best {
+                best = total
+            }
+        }
+    }
+    
+    return best
+}
+
+const MAX_COL_SIZE: u32 = 15
+const MAX_ROW_SIZE: u32 = 10
+type Matrix (
+    rows: u32,
+    cols: u32,
+    data: [i32 * (MAX_COL_SIZE * MAX_ROW_SIZE)]
+)
+
+namespace Matrix {
+    fn new(rows: u32, cols: u32): Self {
+        let self = Self(rows, cols)
+        // Checked input file and max was 10
+        assert(self.data.len() as u32 >= rows * cols, "More memory needs to be allocated above: %zu %zu", rows, cols)
+        return self
+    }
+
+    fn set(self: &Self, row: u32, col: u32, data: i32) {
+        self.data[row * self.cols + col] = data
+    }
+
+    fn at(self: &Self, row: u32, col: u32): i32 {
+        return self.data[row * self.cols + col]
+    }
+
+    fn display_row(self: &Self, row: u32) {
+        print("| ")
+        for i in (0 as u32)..self.cols {
+            print("%3d ", self.data[row * self.cols + i])
+        }
+        println(" |")
+    }
+
+    fn display(self: &Self) {
+        for j in (0 as u32)..self.rows {
+            self.display_row(j)
+        }
+    }
+
+    fn swap_rows(self: &Self, row_a: u32, row_b: u32) {
+        if row_a == row_b return
+
+        let temp: [i32 * MAX_COL_SIZE]
+        for i in (0 as u32)..self.cols {
+            temp[i] = self.at(row_a, i)
+            self.set(row_a, i, self.at(row_b, i))
+        }
+
+        for i in (0 as u32)..self.cols {
+            self.set(row_b, i, temp[i])
+        }
+    }
+
+    fn sub_rows(self: &Self, row_a: u32, row_b: u32) {
+        for i in (0 as u32)..self.cols {
+            self.set(row_a, i, self.at(row_a, i) - self.at(row_b, i))
+        }
+    }
+
+    fn mul_row(self: &Self, row: u32, constant: i32) {
+        for i in (0 as u32)..self.cols {
+            self.set(row, i, self.at(row, i) * constant)
+        }
+    }
+
+    fn gcd_row(self: &Self, row: u32): i32 {
+        let result = self.at(row, 0)
+        if result < 0 result = -result
+        
+        for i in (1 as u32)..self.cols {
+            let val = self.at(row, i)
+            result = gcd(result, val)
+            if result == 1 return 1
+        }
+        return result
+    }
+
+    fn eliminate(self: &Self, row_e: u32, row_b: u32, col: u32) {
+        let val_e = self.at(row_e, col)
+        let val_b = self.at(row_b, col)
+
+        self.mul_row(row_b, val_e)
+        self.mul_row(row_e, val_b)
+        self.sub_rows(row_e, row_b)
+
+        // Divide the row by the gcd of the whole row do keep the lowest term; since we multiplied above
+        reduce_row_by_gcd(self, row_b)
+        reduce_row_by_gcd(self, row_e)
+    }
+}
+
+fn gcd(a: i32, b: i32): i32 {
+    if a < 0 a = -a
+    if b < 0 b = -b
+    
+    while b != 0 {
+        let temp = b
+        b = a % b
+        a = temp
+    }
+    return a
+}
+
+fn reduce_row_by_gcd(mat: &Matrix, row: u32) {
+    let g = mat.gcd_row(row)
+    if g > 1 {
+        for i in (0 as u32)..mat.cols {
+            mat.set(row, i, mat.at(row, i) / g)
+        }
+    }
+}
+
+fn gaussian_elimination(mat: &Matrix, not_free: &bool) {
+    let num_variables = mat.cols - 1
+    // Top Bottom trying to swap every leading row that is not "leading" and eliminate non-zero col below it
+    let non_zero_row: u32 = 0, col: u32 = 0
+    while non_zero_row <= mat.rows and col < num_variables {
+        let row = u32.MAX
+        // find actual non zero row
+        for i in non_zero_row..mat.rows {
+            if mat.at(i, col) == 0 continue
+            row = i
+            break
+        }
+        // All rows bellow current leading column where all zero
+        if row == u32.MAX {
+            col += 1
+            continue
+        }
+
+        // Basically this gurantees non-zero row becomes row
+        if non_zero_row != row {
+            mat.swap_rows(non_zero_row, row)
+        }
+
+        for i in (non_zero_row + 1)..mat.rows {
+            if mat.at(i, col) == 0 continue
+            mat.eliminate(i, non_zero_row, col)
+        }
+        
+        // Ensure leading non-zero row is positive
+        if mat.at(non_zero_row, col) < 0 {
+            mat.mul_row(non_zero_row, -1)
+        }
+        non_zero_row += 1
+        col += 1
+    }
+
+    // Bottom-top substitute all known variables
+    for inv_row in (1 as u32)..=mat.rows {
+        let row = mat.rows - inv_row
+        let col = mat.cols
+
+        for i in (0 as u32)..num_variables {
+            if mat.at(row, i) != 0 {
+                col = i
+                break
+            }
+        }
+
+        if col == mat.cols continue  // All-zero row
+        *not_free.offset(col) = true
+
+        // Substitute entry
+        for wrow in (0 as u32)..row {
+            if mat.at(wrow, col) == 0 continue
+            let target = mat.at(wrow, col)
+
+            // Basically multiply by term you are trying to subitute and then subtract the rows
+            mat.eliminate(wrow, row, col)
+        }
+
+        if mat.at(row, col) < 0 {
+            mat.mul_row(row, -1)
+        }
+    }
+}
+
+fn get_row_solution(mat: &Matrix, row: u32, rhs: i32): i32 {
+    // Find first non-zero coefficient
+    for col in (0 as u32)..(mat.cols - 1) {
+        let coeff = mat.at(row, col)
+        if coeff != 0 {
+            // Found non-zero coefficient
+            if rhs % coeff != 0 {
+                return -1  // No integer solution
+            }
+            return rhs / coeff
+        }
+    }
+    
+    if rhs != 0 {
+        return -1
+    }
+    return 0
+}
+
+fn find_least_presses_joltage(buttons: [u16], joltages: [u32]): uint {
+    let mat = Matrix.new (
+        rows: joltages.len() as u32, 
+        cols: buttons.len() + 1 as u32
+    )
+
+    for i in 0..joltages.len() {
+        for j in 0..buttons.len() {
+            mat.set(i as u32, j as u32, (buttons[j] & encode(i as u32)) != 0 as i32)
+        }
+        mat.set(i as u32, mat.cols - 1, joltages[i] as i32)
+    }
+    
+    let not_free: [bool * MAX_COL_SIZE]
+    for i in 0..not_free.len() {
+        not_free[i] = false
+    }
+    gaussian_elimination(&mat, &not_free[0])
+
+    // Populate free variables
+    let free_vars: [u32 * (MAX_COL_SIZE * 2)]
+    let num_free_vars = 0
+    for col in 0..buttons.len() {
+        if not_free[col] == false {
+            free_vars[num_free_vars] = col as u32
+            num_free_vars += 1
+        }
+    }
+    
+    let res = solve_for_free_variables(&mat, &free_vars[0], 0, num_free_vars) as uint
+    
+    return res
+}
+
+fn solve_for_free_variables(mat: &Matrix, free_vars: &u32, start: uint, num_free_vars: uint): i32 {
+    if start >= num_free_vars {
+        // All free variables assigned - calculate total
+        let sum: i32 = 0
+        for row in (0 as u32)..mat.rows {
+            let solution = get_row_solution(mat, row, mat.at(row, mat.cols - 1))
+            if solution < 0 {
+                return 0x7FFFFFFF  // Invalid solution
+            }
+            sum += solution
+        }
+        return sum
+    }
+    
+    let best: i32 = 0x7FFFFFFF
+    let col = *free_vars.offset(start)
+    
+    // Find valid range - use Python's logic
+    let max_val: i32 = 142
+    
+    for row in (0 as u32)..mat.rows {
+        let coeff = mat.at(row, col)
+        if coeff == 0 continue
+        
+        let rhs = mat.at(row, mat.cols - 1)
+        
+        // Check if all coefficients in this row have the same sign
+        let first_sign: i32 = 0
+        let all_same_sign = true
+        
+        for c in (0 as u32)..(mat.cols - 1) {
+            let val = mat.at(row, c)
+            if val != 0 {
+                if first_sign == 0 {
+                    first_sign = when val > 0 { true -> 1 else -> -1 }
+                } else {
+                    let curr_sign: i32 = when val > 0 { true -> 1 else -> -1 }
+                    if curr_sign != first_sign {
+                        all_same_sign = false
+                        break
+                    }
+                }
+            }
+        }
+        
+        if all_same_sign {
+            let apply_bound = false
+            if first_sign == 1 and rhs >= 0 {
+                apply_bound = true
+            } else if first_sign == -1 and rhs <= 0 {
+                apply_bound = true
+            }
+            
+            if apply_bound {
+                // Use absolute values like Python
+                let abs_rhs = when rhs < 0 { true -> -rhs else -> rhs }
+                let abs_coeff = when coeff < 0 { true -> -coeff else -> coeff }
+                let bound = abs_rhs / abs_coeff
+                if bound < max_val {
+                    max_val = bound
+                }
+            }
+        }
+    }
+
+    // Try values from 0 to max_val
+    for val in (0 as i32)..=max_val {
+        // Make a copy of mat
+        let mat_copy = *mat
+    
+        // Substitute this value for the free variable
+        for row in (0 as u32)..mat_copy.rows {
+            let coeff = mat_copy.at(row, col)
+            if coeff != 0 {
+                let new_rhs = mat_copy.at(row, mat_copy.cols - 1) - coeff * val
+                mat_copy.set(row, mat_copy.cols - 1, new_rhs)
+                mat_copy.set(row, col, 0)
+            }
+        }
+        let answer = solve_for_free_variables(&mat_copy, free_vars, start + 1, num_free_vars)
+        
+        if answer == 0x7FFFFFFF continue
+        
+        let total = answer + val
+        
+        if total < best {
+            best = total
+            *free_vars.offset(num_free_vars + start) = val as u32
+        }
+    }
+    
+    return best
+}
+
+fn encode(x: u32): u16 {
+    assert(x < 16)
+    return (1 as u32 << 10 - x) & 0xFFFF as u16
+}
+
+fn solve(part: uint, file: [u8]) {
+    file = ensure_trailing_char(file, '\n')
+    let buttons: [u16] = []
+    let requirements: [u32] = []
+    let indicator: u16 = 0
+    let current_button: u16 = 0 
+    let num_start = 0
+    let is_parsing_requirement = false
+    let current_ind_idx: u32 = 0
+
+    let answer = 0, last_line = 0
+    for i in 0..file.len() {
+        when file[i] {
+            ']' -> current_ind_idx = 0
+            '.' -> current_ind_idx += 1
+            '#' -> {
+                indicator |= encode(current_ind_idx)
+                current_ind_idx += 1
+            }
+            '(' -> num_start = i + 1
+            '{' -> {
+                is_parsing_requirement = true
+                num_start = i + 1 
+            }
+            ',' -> {
+                let num = u32_parse(&file[num_start], i - num_start)
+                if is_parsing_requirement {
+                    requirements.push(num)
+                } else {
+                    current_button |= encode(num)
+                }
+                num_start = i + 1
+            }
+            ')' -> {
+                buttons.push(current_button | encode(u32_parse(&file[num_start], i - num_start)))
+                current_button = 0
+            }
+            '}' -> {
+                requirements.push(u32_parse(&file[num_start], i - num_start))
+                is_parsing_requirement = false
+            }
+            '\n' -> {
+                if part == 1 {
+                    answer += find_least_presses_indicator(indicator, buttons, 0)
+                } else {
+                    answer += find_least_presses_joltage(buttons, requirements)
+                }
+                requirements.setlen(0)
+                buttons.setlen(0)
+                indicator = 0
+                last_line = i
+            }
+            else -> {}
+        }
+    }
+    println("answer is %zu", answer)
+    
+}
+
+fn main(): i32 {
+    let file_path = str.from_cstr("out.txt")
+    when File.read_all(&file_path) {
+        FileOpenError | FileReadError -> {
+            println("error reading file %.*s", file_path.len(), file_path.raw())
+        }
+        FileOpenSuccess(contents) -> {
+            solve(2, contents)
+            return 0
+        }
+    }
+}

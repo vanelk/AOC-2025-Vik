@@ -1,0 +1,109 @@
+import "../../../src/libvik/prelude.vik"
+import File, FileResult in "../../../src/libvik/file.vik"
+import u32_parse, ensure_trailing_char in "common.vik"
+type Region (
+    width: u8,
+    height: u8,
+    quantities: [u8 * 6]
+)
+
+fn area(shape: u32): u32 {
+    let res: u32 = 0
+    for i in 0..9 {
+        res += (shape >> (i as u32)) & 1
+    }
+    return res
+}
+
+fn can_fit(region: &Region, shapes: &u32): bool {
+    let total_area_available = (region.width as u32) * (region.height as u32)
+    let naive_area_needed: u32 = 0
+    let best_possible_area: u32 = 0
+
+    for i in 0..region.quantities.len() {
+        let shape = *shapes.offset(i)
+        let required_shapes = region.quantities[i] as u32
+        best_possible_area += area(shape) * required_shapes
+        naive_area_needed += 9 * required_shapes
+    }
+
+    if total_area_available >= naive_area_needed {
+        return true
+    }
+
+    if total_area_available < best_possible_area {
+        return false
+    }
+
+    assert(false, "reduction needed %u; optimal area %u", naive_area_needed - total_area_available, best_possible_area)
+    return false
+}
+
+fn solve(part: uint, file: [u8]) {
+    if part == 2 {
+        println("answer is n/a")
+        return
+    }
+
+    file = ensure_trailing_char(file, '\n')
+    let shapes: [u32 * 6]
+    let current_shape: i32 = -1
+    let bit_in_shape: u32 = 0
+    let region = Region(0, 0)
+    let last_x = 0, last_line = 0, last_space = 0, curr_qty = 0
+    let answer = 0
+    for i in 0..file.len() {
+        when file[i] {
+            '.' -> bit_in_shape += 1
+            '#' -> {
+                shapes[current_shape] |= 1 << bit_in_shape
+                bit_in_shape += 1
+            }
+            ':' -> {
+                if last_x == 0 {
+                    current_shape += 1
+                    shapes[current_shape] = 0
+                    bit_in_shape = 0
+                } else {
+                    region.height = u32_parse(&file[last_x + 1], i - last_x - 1) as u8
+                }
+            }
+            'x' -> {
+                region.width = u32_parse(&file[last_line + 1], i - last_line - 1) as u8
+                curr_qty = 0
+                last_x = i
+            }
+            ' ' -> {
+                if file[i - 1] != ':' and last_x != 0 {
+                    region.quantities[curr_qty] = u32_parse(&file[last_space + 1], i - last_space - 1) as u8
+                    curr_qty += 1
+                }
+                last_space = i
+            }
+            '\n' -> {
+                if last_x != 0 {
+                    region.quantities[curr_qty] = u32_parse(&file[last_space + 1], i - last_space - 1) as u8
+                    if can_fit(&region, &shapes[0]) {
+                        answer += 1
+                    }
+                }
+                last_line = i
+            }
+            else -> {}
+        }
+    }
+    println("answer = %zu", answer)
+}
+
+fn main(): i32 {
+    let file_path = str.from_cstr("out.txt")
+    when File.read_all(&file_path) {
+        FileOpenError | FileReadError -> {
+            println("error reading file %.*s", file_path.len(), file_path.raw())
+        }
+        FileOpenSuccess(contents) -> {
+            solve(1, contents)
+            return 0
+        }
+    }
+}

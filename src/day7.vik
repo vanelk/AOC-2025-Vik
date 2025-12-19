@@ -1,0 +1,72 @@
+import "../../../src/libvik/prelude.vik"
+import File, FileResult in "../../../src/libvik/file.vik"
+
+fn count_timelines(file: [u8], visited: &i64, row: uint, col: uint, rows: uint, cols: uint): uint {
+    for r in row..rows {
+        let char_idx = col + r * (cols + 1)
+        let cached = *visited.offset(char_idx)
+        if cached >= 0 {
+            return cached as uint
+        }
+
+        if file[char_idx] == '^' {
+            let left_paths = count_timelines(file, visited, r + 1, col - 1, rows, cols)
+            let right_paths = count_timelines(file, visited, r + 1, col + 1, rows, cols)
+            let paths = left_paths + right_paths + 1
+
+            *visited.offset(char_idx) = paths as i64
+            return paths
+        }
+        
+    }
+
+    *visited.offset(col + row * (cols + 1)) = 0
+    return 0
+}
+
+fn solve(part: uint, file: [u8]) {
+    let start_row = 0, cols = 0
+    let visited: [i64 * 32768]
+    assert(file.len() < visited.len(), "file too large for visited buffer")
+    for i in 0..visited.len() {
+        visited[i] = -1
+    }
+
+    for i in 0..file.len() {
+        when file[i] {
+            'S' -> start_row = i
+            '\n' -> {
+                cols = i
+                break
+            }
+            else -> {}
+        }
+    }
+
+    let rows = file.len() / (cols + 1)
+    let answer = count_timelines(file, &visited[0], 1, start_row, rows, cols) + 1
+
+    if part == 1 {
+        answer = 0 
+        for i in 0..visited.len() {
+            if visited[i] > 0 {
+                answer += 1
+            }
+        }
+    }
+    
+    println("answer is %zu", answer)
+}
+
+fn main(): i32 {
+    let file_path = str.from_cstr("out.txt")
+    when File.read_all(&file_path) {
+        FileOpenError | FileReadError -> {
+            println("error reading file %.*s", file_path.len(), file_path.raw())
+        }
+        FileOpenSuccess(contents) -> {
+            solve(2, contents)
+            return 0
+        }
+    }
+}

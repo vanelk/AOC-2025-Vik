@@ -1,0 +1,38 @@
+fn u32_parse(ptr: &u8, len: uint): u32 {
+    let answer: u32 = 0
+    for i in 0..len {
+        answer = (answer * 10) + (*ptr.offset(i) - '0' as u32)
+    }
+    return answer
+}
+fn uilog10(n: uint): uint {
+    let answer = 0
+    while n != 0 {
+        n /= 10
+        answer += 1
+    }
+    return answer
+}
+
+fn uipow(b: uint, e: uint): uint {
+    let answer = 1
+    for i in 0..e {
+        answer *= b
+    }
+    return answer
+}
+
+fn uint_parse(ptr: &u8, len: uint): uint {
+    let answer = 0
+    for i in 0..len {
+        answer = (answer * 10) + (*ptr.offset(i) - '0' as uint)
+    }
+    return answer
+}
+
+fn ensure_trailing_char(file: [u8], char: u8): [u8] {
+    if file[file.len() - 1] != char {
+        file.push(char)
+    }
+    return file
+}

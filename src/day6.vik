@@ -1,0 +1,132 @@
+import "../../../src/libvik/prelude.vik"
+import File, FileResult in "../../../src/libvik/file.vik"
+import uint_parse in "./common.vik"
+fn sum(buffer: &uint, len: uint): uint {
+    let total = 0
+    for i in 0..len {
+        total += *buffer.offset(i)
+    }
+    return total
+}
+
+fn apply_operation(op: u8, acc: uint, num: uint): uint {
+    return when op {
+        '+' -> acc + num
+        '*' -> acc * num
+        else -> {
+            assert(false, "unknown operation %c", op)
+            0
+        }
+    }
+}
+
+fn extract_operators_and_dims(file: [u8], ops: &u8, cols: &uint, rows: &uint): uint {
+    let count = 0
+    let x = file.len() - 1
+    while file[x] != '\n' {
+        if file[x] is '*' | '+' {
+            *ops.offset(count) = file[x]
+            count += 1
+        }
+        x -= 1
+    }
+    
+    *cols = file.len() - x - 1
+    *rows = file.len() / (*cols + 1)
+    return count
+}
+
+fn solve_pt2(file: [u8]): uint {
+    let problem_ops: [u8 * 1024]
+    let problems_compact: [uint * 1024]
+
+    let cols = 0, rows = 0
+    let problems_count = extract_operators_and_dims(file, &problem_ops[0], &cols, &rows)
+    
+    let working_buffer: [u8 * 1024]
+    let wb_len = 0
+
+    let solved_cols = 0
+    let first = true
+    for col_offset in 0..cols {
+        let col = cols - col_offset - 1
+        for row in 0..rows {
+            let index = row * (cols + 1) + col
+            let char = file[index]
+            if char is '0'..='9' {
+                working_buffer[wb_len] = char
+                wb_len += 1
+            }
+        }
+        if wb_len == 0 {
+            solved_cols += 1
+            first = true
+            continue
+        }
+        let num = uint_parse(&working_buffer[0], wb_len)
+        wb_len = 0
+        if first {
+            problems_compact[solved_cols] = num
+            first = false
+            continue
+        }
+        problems_compact[solved_cols] = apply_operation(problem_ops[solved_cols], problems_compact[solved_cols], num)
+    }
+    return sum(&problems_compact[0], problems_count)
+}
+
+fn solve(part: uint, file: [u8]) {
+    let last_digit = 0, start_of_num = 0
+    // Heurestics; Assuming that we don't exceed that
+    let problem_ops: [u8 * 1024]
+    let problems_compact: [uint * 1024]
+    let cols = 0
+    let nums: [uint] = []
+
+    for i in 0..file.len() {
+        when file[i] {
+            '\n' | ' ' -> {
+                if last_digit + 1 == i {
+                    nums.push(uint_parse(&file[start_of_num], i - start_of_num))
+                }
+                start_of_num = i + 1
+            }
+            '0'..='9' -> {
+                last_digit = i
+            }
+            '*' | '+' -> {
+                problem_ops[cols] = file[i]
+                cols += 1
+                assert(problem_ops.len() > cols, "You need to increase the problem_ops and problems_compact buffers to atleast %zu", cols)
+            }
+            else -> {}
+        }
+    }
+
+
+    let rows = nums.len() / cols
+    for i in 0..cols {
+        problems_compact[i] = nums[i]
+    }
+    for j in 1..rows {
+        for i in 0..cols {
+            let num = nums[(cols * j) + i]
+            problems_compact[i] = apply_operation(problem_ops[i], problems_compact[i], num)
+        }
+    }
+
+    println("answer is %zu", sum(&problems_compact[0], cols))
+}
+
+fn main(): i32 {
+    let file_path = str.from_cstr("out.txt")
+    when File.read_all(&file_path) {
+        FileOpenError | FileReadError -> {
+            println("error reading file %.*s", file_path.len(), file_path.raw())
+        }
+        FileOpenSuccess(contents) -> {
+            solve(2, contents)
+            return 0
+        }
+    }
+}

@@ -1,0 +1,77 @@
+import "../../../src/libvik/prelude.vik"
+import File, FileResult in "../../../src/libvik/file.vik"
+import ensure_trailing_char in "common.vik"
+
+const INVALID_JOLT_IDX = 0xFFFFFFFFFFFFFFFF // uint.MAX
+
+fn jolts_positions_to_num(file: [u8], jolts_pos: &uint, jolts_pos_len: uint): uint {
+    let answer: uint = 0
+    for i in 0..jolts_pos_len {
+        answer = answer * 10 + (file[*jolts_pos.offset(i)] - '0' as uint)
+    }
+    return answer
+}
+
+fn find_next_newline(file: [u8], start: uint): uint {
+    for i in start..file.len() {
+        if file[i] == '\n' return i
+    }
+    return file.len()
+}
+
+fn reset_max_jolts(buffer: &uint, start: uint, buffer_size: uint) {
+    for i in start..buffer_size {
+        *buffer.offset(i) = INVALID_JOLT_IDX
+    }
+}
+
+fn solve(part: uint, file: [u8]) {
+    file = ensure_trailing_char(file, '\n')
+    
+    const MAX_BATTERIES = (part - 1) * 12
+    let answer = 0
+    let largest_jolts: [uint * 12]
+
+    reset_max_jolts(&largest_jolts[0], 0, MAX_BATTERIES)
+    let new_line = find_next_newline(file, 0)
+
+    for i in 0..file.len() {
+        let char = file[i]
+        when char {
+            '\n' -> {
+                answer += jolts_positions_to_num(file, &largest_jolts[0], MAX_BATTERIES)
+                new_line = find_next_newline(file, new_line + 1)
+                reset_max_jolts(&largest_jolts[0], 0, MAX_BATTERIES)
+            }
+            else -> {
+                for j in 0..MAX_BATTERIES {
+                    let jolt_value = when largest_jolts[j] {
+                        INVALID_JOLT_IDX -> '0' - 1
+                        else -> file[largest_jolts[j]]
+                    }
+
+                    let remaining_slots = MAX_BATTERIES - (j + 1) 
+                    if i + remaining_slots < new_line and jolt_value < char {
+                        largest_jolts[j] = i
+                        reset_max_jolts(&largest_jolts[0],  j + 1, MAX_BATTERIES)
+                        break
+                    }
+                }
+            }
+        }    
+    }
+    println("answer = %zu", answer)
+}
+
+fn main(): i32 {
+    let file_path = str.from_cstr("out.txt")
+    when File.read_all(&file_path) {
+        FileOpenError | FileReadError -> {
+            println("error reading file %.*s", file_path.len(), file_path.raw())
+        }
+        FileOpenSuccess(contents) -> {
+            solve(2, contents)
+            return 0
+        }
+    }
+}

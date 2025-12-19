@@ -1,0 +1,190 @@
+import "../../../src/libvik/prelude.vik"
+import File, FileResult in "../../../src/libvik/file.vik"
+import uint_parse, ensure_trailing_char in "common.vik"
+
+fn calculate_paths_between(file: [u8], graph: &Graph, visited: [uint], start: u32, target: u32): uint {
+    if start == target {
+        return 1
+    }
+    
+    if visited[start] != 0 {
+        return visited[start] - 1
+    }
+    
+    visited[start] = 1
+    
+    let neighbors_len = graph.neighbors_len(start)
+    let result: uint = 0
+
+    for i in (0 as u32)..neighbors_len {
+        let neighbor = graph.get_neighbor(start, i)
+        result += calculate_paths_between(file, graph, visited, neighbor, target)
+    }
+
+    visited[start] = result + 1
+    return result
+}
+
+fn reset_visits(visited: [uint]) {
+    for j in 0..visited.len() {
+        visited[j] = 0
+    }
+}
+
+fn calculate_paths_to_out_pt2(file: [u8], graph: &Graph, visited: [uint]): uint {
+    let svr = graph.get_node("svr")
+    let dac = graph.get_node("dac")
+    let fft = graph.get_node("fft")
+    let out = graph.get_node("out")
+    
+    reset_visits(visited)
+    let paths_svr_to_dac = calculate_paths_between(file, graph, visited, svr, dac)
+    
+    reset_visits(visited)
+    let paths_dac_to_fft = calculate_paths_between(file, graph, visited, dac, fft)
+
+    reset_visits(visited)
+    let paths_fft_to_out = calculate_paths_between(file, graph, visited, fft, out)
+    
+    let order1 = paths_svr_to_dac * paths_dac_to_fft * paths_fft_to_out
+
+    reset_visits(visited)
+    let paths_svr_to_fft = calculate_paths_between(file, graph, visited, svr, fft)
+    
+    reset_visits(visited)
+    let paths_fft_to_dac = calculate_paths_between(file, graph, visited, fft, dac)
+    
+    reset_visits(visited)
+    let paths_dac_to_out = calculate_paths_between(file, graph, visited, dac, out)
+    
+    let order2 = paths_svr_to_fft * paths_fft_to_dac * paths_dac_to_out
+    
+    return order1 + order2
+}
+
+const LABEL_SIZE: u32 = 3
+type Node (
+    id: u32,
+    neighbors: u32,
+    neighbors_count: u32
+)
+
+fn hash(s: &u8): uint {
+    let a = (*s.offset(0) - 'a' as u8) as uint
+    let b = (*s.offset(1) - 'a' as u8) as uint
+    let c = (*s.offset(2) - 'a' as u8) as uint    
+    return a * 676 + b * 26 + c
+}
+
+type Graph (
+    nodes: [Node],
+    neighbors: [u32],
+    // Non-Collidable map for problem space
+    map: [u16 * 17575]
+)
+
+namespace Graph {
+    const EMPTY: u16 = 0xFFFF
+    fn new(): Self {
+        let self = Self([], [])
+        for i in 0..self.map.len() {
+            self.map[i] = EMPTY
+        }
+        return self
+    }
+
+    fn add_node(self: &Self, name: &u8): u32 {
+        let key = hash(name)
+        if self.map[key] != EMPTY return self.map[key] as u32
+        let id = self.nodes.len() as u32
+        self.nodes.push(Node(id, self.neighbors.len() as u32, 0))
+        self.map[key] = id as u16
+        return id
+    }
+
+    fn reset_neighbors(self: &Self, id: u32) {
+        let nodes = self.nodes
+        let node = &nodes[id]
+        node.neighbors = self.neighbors.len() as u32
+    }
+
+    fn add_neighbor(self: &Self, id: u32, neighbor: u32) {
+        let nodes = self.nodes // Nei
+        let node = &nodes[id]
+        assert (
+            node.neighbors + node.neighbors_count == (self.neighbors.len() as u32), 
+            "failed %d %d", 
+            node.neighbors + node.neighbors_count, self.neighbors.len() as u32
+        )
+        self.neighbors.push(neighbor)
+        node.neighbors_count += 1
+    }
+
+    fn get_node(self: &Self, name: cstr): u32 {
+        let key = hash(name as &u8)
+        assert(self.map[key] != EMPTY)
+        return self.map[key] as u32
+    }
+
+    fn neighbors_len(self: &Self, id: u32): u32 {
+        let nodes = self.nodes
+        let node = &nodes[id]
+        return node.neighbors_count
+    }
+
+    fn get_neighbor(self: &Self, id: u32, offset: u32): u32 {
+        let nodes = self.nodes
+        let node = &nodes[id]
+        return self.neighbors[node.neighbors + offset]
+    }
+}
+
+fn solve(part: uint, file: [u8]) {
+    file = ensure_trailing_char(file, '\n')
+    let graph = Graph.new()
+    let current_node: u32 = 0
+
+    for i in 0..file.len() {
+        when file[i] {
+            ':' -> {
+                current_node = graph.add_node(&file[i as u32 - LABEL_SIZE])
+                graph.reset_neighbors(current_node)
+            }
+            ' ' | '\n' | '\t' -> {
+                let offset = LABEL_SIZE
+                if file[i - 1] == ':' continue
+                if file[i - 1] == '\r' {
+                    offset += 1
+                }
+                let neighbor = graph.add_node(&file[i as u32 - offset])
+                graph.add_neighbor(current_node, neighbor)
+            }
+            else -> {}
+        }
+    }
+
+    let visited: [uint] = []
+    for i in 0..graph.nodes.len() {
+        visited.push(0)
+    }
+    
+    let answer = when part {
+        1 -> calculate_paths_between(file, &graph, visited, graph.get_node("you"), graph.get_node("out"))
+        else -> calculate_paths_to_out_pt2(file, &graph, visited)
+    }
+
+    println("answer = %zu", answer)
+}
+
+fn main(): i32 {
+    let file_path = str.from_cstr("out.txt")
+    when File.read_all(&file_path) {
+        FileOpenError | FileReadError -> {
+            println("error reading file %.*s", file_path.len(), file_path.raw())
+        }
+        FileOpenSuccess(contents) -> {
+            solve(2, contents)
+            return 0
+        }
+    }
+}

@@ -1,0 +1,98 @@
+import "../../../src/libvik/prelude.vik"
+import File, FileResult in "../../../src/libvik/file.vik"
+import uint_parse, uilog10, uipow, ensure_trailing_char in "common.vik"
+
+fn is_invalid_id(num: uint): bool {
+    let digs_count = uilog10(num)
+    if digs_count % 2 == 0 {
+        let mpow =  uipow(10, digs_count / 2)
+
+        let pt1 = num / mpow
+        let pt2 = num % mpow
+        return pt1 == pt2
+    }
+    return false
+}
+
+// Not worth squeezing more perf but; upto sqrt(digs_count) instead of /2 as it technically captures of the divisors of digs_count mathematically
+fn is_invalid_id2(num: uint): bool {
+    let digs_count = uilog10(num)
+    
+    for i in 1..=(digs_count / 2) {
+        if digs_count % i != 0 continue
+        
+        let base10_pow = uipow(10, i)
+        let repeated_seq = num % base10_pow
+        let partition_size = digs_count / i
+        let working_num = num / base10_pow
+        
+        let matches = true
+        for _ in 1..partition_size {
+            if (working_num % base10_pow) != repeated_seq {
+                matches = false
+                break
+            }
+            working_num /= base10_pow
+        }
+        
+        if matches return true
+    }
+    
+    return false
+}
+
+fn dispatch_is_invalid_id(part: uint, num: uint): bool {
+    when part {
+        1 -> return is_invalid_id(num)
+        2 -> return is_invalid_id2(num)
+        else -> assert(false, "unreachable")
+    }
+    return false
+}
+
+fn count_invalid_ids_in_range(part: uint, start: uint, end: uint): uint {
+    let count = 0
+    for num in start..=end {
+        if dispatch_is_invalid_id(part, num) {
+            count += num
+        }
+    }
+    return count
+}
+
+fn solve(part: uint, file: [u8]) {
+    file = ensure_trailing_char(file, ',')
+    let last_comma = -1, last_dash = 0
+    let answer = 0
+    for i in 0..file.len() {
+        when file[i] {
+            ',' -> {
+                answer += count_invalid_ids_in_range(
+                    part,
+                    uint_parse(&file[last_comma + 1], last_dash - (last_comma + 1)), 
+                    uint_parse(&file[last_dash + 1], i - (last_dash + 1))
+                )
+                last_comma = i
+            }
+            '-' -> {
+                last_dash = i
+            }
+            else -> { }
+        }
+        
+    }
+    println("answer = %zu", answer)
+}
+
+fn main(): i32 {
+    let file_path = str.from_cstr("out.txt")
+    when File.read_all(&file_path) {
+        FileOpenError | FileReadError -> {
+            println("error reading file %.*s", file_path.len(), file_path.raw())
+        }
+        FileOpenSuccess(contents) -> {
+            solve(2, contents)
+            return 0
+        }
+    }
+}

@@ -1,0 +1,99 @@
+import "../../../src/libvik/prelude.vik"
+import File, FileResult in "../../../src/libvik/file.vik"
+
+type Grid (
+    data: [u8]
+    cols: u32,
+    rows: u32
+)
+namespace Grid {
+    let roll_char = '@'
+
+    fn new(data: [u8]): Grid {
+        let cols: u32 = 0
+        for i in 0..data.len() {
+            if data[i] == '\n' {
+                cols = i as u32
+                break
+            }
+        }
+
+        let rows = (data.len() as u32) / cols
+        return Grid (
+            data: data,
+            cols: cols,
+            rows: rows
+        )
+    }
+    
+    fn to_index(self: &Self, col: u32, row: u32): u32 {
+        return row * (self.cols + 1) + col
+    }
+
+    fn is_roll(self: &Self, col: u32, row: u32): bool {
+        return self.data[self.to_index(col, row)] == roll_char
+    }
+
+    fn try_add_and_check_is_row(self: &Self, a: u32, b: u32): bool {
+        if a + b as uint >= self.data.len() return false
+        return self.data[a + b] == roll_char
+    }
+
+    fn try_sub_and_check_is_row(self: &Self, a: u32, b: u32): bool {
+        if a < b return false
+        return self.data[a - b] == roll_char
+    }
+
+    fn count_adjs(self: &Self, col: u32, row: u32): u32 {
+        let index = self.to_index(col, row)
+
+        let top = self.try_sub_and_check_is_row(index, self.cols + 1) as u32
+        let bottom = self.try_add_and_check_is_row(index, self.cols + 1) as u32
+
+        let left = self.try_sub_and_check_is_row(index, 1) as u32
+        let right = self.try_add_and_check_is_row(index, 1) as u32
+        
+        let lead_diag_left = self.try_sub_and_check_is_row(index, self.cols + 2) as u32
+        let lead_diag_right = self.try_add_and_check_is_row(index, self.cols + 2) as u32
+        
+        let opp_diag_left = self.try_sub_and_check_is_row(index, self.cols) as u32
+        let opp_diag_right = self.try_add_and_check_is_row(index, self.cols) as u32
+
+        return top + bottom + left + right + lead_diag_left + lead_diag_right + opp_diag_left + opp_diag_right
+    }
+}
+
+fn solve(part: uint, file: [u8]) {
+    let answer: u32 = 0  
+    let grid = Grid.new(file)
+    let changed = true
+    while changed {
+        changed = false
+        for y in (0 as u32)..grid.rows {
+            for x in (0 as u32)..grid.cols {
+                if grid.is_roll(x, y) == false continue
+                if grid.count_adjs(x, y) >= 4 continue
+                
+                if part == 2 {
+                    grid.data[grid.to_index(x, y)] = '.'
+                    changed = true
+                }
+                answer += 1
+            }
+        }
+    }
+    println("answer is %u", answer)
+}
+
+fn main(): i32 {
+    let file_path = str.from_cstr("out.txt")
+    when File.read_all(&file_path) {
+        FileOpenError | FileReadError -> {
+            println("error reading file %.*s", file_path.len(), file_path.raw())
+        }
+        FileOpenSuccess(contents) -> {
+            solve(2, contents)
+            return 0
+        }
+    }
+}

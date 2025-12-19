@@ -1,0 +1,162 @@
+import "../../../src/libvik/prelude.vik"
+import File, FileResult in "../../../src/libvik/file.vik"
+import uint_parse, ensure_trailing_char in "common.vik"
+
+type Point(
+    x: uint,
+    y: uint
+)
+namespace Point {
+    fn area(self: &Self, other: &Self): uint {
+        let width = when self.x > other.x {
+            true -> self.x - other.x 
+            else -> other.x - self.x 
+        }
+        let height = when self.y > other.y { 
+            true -> self.y - other.y 
+            else -> other.y - self.y 
+        }
+        return (width + 1) * (height + 1)
+    }
+}
+type Range(
+    start: uint,
+    end: uint
+)
+fn connect_points(cross_section: [Range], min_y: uint, curr_pt: &Point, next_pt: &Point) {
+    let sy = curr_pt.y, ey = next_pt.y
+    if sy > ey {
+        sy = ey
+        ey = curr_pt.y
+    }
+    let max_x = curr_pt.x, min_x = next_pt.x
+    if max_x < min_x {
+        max_x = min_x
+        min_x = curr_pt.x
+    }
+    for y in sy..=ey {
+        let curr_rng = &cross_section[y - min_y]
+        if curr_rng.end < max_x {
+            curr_rng.end = max_x
+        }
+        if curr_rng.start > min_x {
+            curr_rng.start = min_x
+        }
+    }
+}
+
+fn create_polygon(points: [Point], min_y: uint, max_y: uint): [Range] {
+    let poly_cross: [Range] = []
+    poly_cross.reserve(max_y - min_y + 1)
+    for j in min_y..=max_y {
+        poly_cross.push(Range(uint.MAX, 0))
+    }
+
+    let points_len = points.len()
+    for curr_idx in 0..points_len - 1 {
+        let next_idx = curr_idx + 1
+        connect_points(poly_cross, min_y, &points[curr_idx], &points[next_idx])
+    }
+    connect_points(poly_cross, min_y, &points[0], &points[points_len - 1])
+
+    // for i in 0..poly_cross.len() {
+    //     let range = &poly_cross[i]
+    //     println("y = %zu, range = [%zu-%zu]", i + min_y, range.start, range.end)
+    // }
+    return poly_cross
+}
+
+fn rect_in_polygon(poly: [Range], min_y: uint, spt: &Point, ept: &Point): bool {
+    if poly.len() == 0 return true
+    let sy = spt.y, sx = spt.x, ey = ept.y, ex = ept.x 
+    if sy > ey {
+        sy = ey
+        ey = spt.y
+    }
+    if sx > ex {
+        sx = ex
+        ex = spt.x
+    }
+    let range = &poly[sy - min_y]
+    if sx < range.start or ex > range.end  {
+        return false
+    }
+    range = &poly[ey - min_y]
+    if sx < range.start or ex > range.end  {
+        return false
+    }
+    sy += 1
+    for y in sy..ey {
+        range = &poly[y - min_y]
+        if sx < range.start or ex > range.end  {
+            return false
+        }
+    }
+    return true
+}
+
+fn solve(part: uint, file: [u8]) {
+    file = ensure_trailing_char(file, '\n')
+    let points: [Point] = []
+    let num_start = 0
+    let current_pt = Point(0, 0)
+    let min_y = uint.MAX, max_y = 0
+    for i in 0..file.len() {
+        when file[i] {
+            '\n' -> {
+                current_pt.y = uint_parse(&file[num_start], i - num_start)
+                if current_pt.y > max_y {
+                    max_y = current_pt.y
+                }
+                if current_pt.y < min_y {
+                    min_y = current_pt.y
+                }
+                points.push(current_pt)
+                num_start = i + 1
+            }
+            ',' -> {
+                current_pt.x = uint_parse(&file[num_start], i - num_start)
+                num_start = i + 1
+            }
+            else -> {}
+        }
+    }
+    let polygon = when part {
+        2 -> create_polygon(points, min_y, max_y)
+        else -> []
+    }
+    
+    let largest_area = 0
+    let sx = 0, sy = 0, ex = 0, ey = 0
+    for i in 0..points.len() {
+        for j in (i + 1)..points.len() {
+            let pti = &points[i]
+            let ptj = &points[j]
+            let area = pti.area(ptj)
+            if area > largest_area {
+                if rect_in_polygon(polygon, min_y, pti, ptj) {
+                    largest_area = area
+                    sx = pti.x
+                    sy = pti.y
+                    ex = ptj.x
+                    ey = ptj.y
+                }
+            }
+        }
+    }
+
+    println("largest area is %zu (from (%zu,%zu) to (%zu,%zu))", largest_area, sx, sy, ex, ey)
+}
+
+fn main(): i32 {
+    let file_path = str.from_cstr("out.txt")
+    when File.read_all(&file_path) {
+        FileOpenError | FileReadError -> {
+            println("error reading file %.*s", file_path.len(), file_path.raw())
+        }
+        FileOpenSuccess(contents) -> {
+            solve(2, contents)
+            return 0
+        }
+    }
+}

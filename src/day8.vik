@@ -1,0 +1,259 @@
+import "../../../src/libvik/prelude.vik"
+import File, FileResult in "../../../src/libvik/file.vik"
+import u32_parse, ensure_trailing_char in "common.vik"
+
+type Vec3 (x: u64, y: u32, z: u32)
+namespace Vec3 {
+    fn dist(self: &Self, other: &Self): u64 {
+        let dx = self.x - other.x
+        let dy = self.y - other.y as u64
+        let dz = self.z - other.z as u64
+        return (dx * dx) + (dy * dy) + (dz * dz)
+    }
+}
+
+type GroupConnector (
+    box_ids: [u32],
+    groups: [u32]
+)
+
+namespace GroupConnector {
+    fn find_group(self: &Self, id: u32, insert: &uint): i64 {
+        let start: u32 = 0
+        for i in 0..self.groups.len() {
+            let group_len = self.groups[i]
+            for j in (0 as u32)..group_len {
+                if self.box_ids[start + j] == id {
+                    *insert = start as uint
+                    return i as i64
+                }
+            }
+            start += group_len
+        }
+        return -1
+    }
+
+    fn add_to_group(self: &Self, group_id: u32, insert_pt: uint, box_id: u32) {
+        self.box_ids.insert(insert_pt + (self.groups[group_id] as uint), box_id)
+        self.groups[group_id] += 1
+    }
+
+    fn create_group(self: &Self, id1: u32, id2: u32) {
+        self.box_ids.push(id1)
+        self.box_ids.push(id2)
+        self.groups.push(2)
+    }
+
+    fn merge_groups(self: &Self, group_id1: u32, insert_pt1: uint, group_id2: u32, insert_pt2: uint) {
+        if group_id1 > group_id2 {
+            let tmp = group_id1
+            let tmp2 = insert_pt1
+            group_id1 = group_id2
+            insert_pt1 = insert_pt2
+            group_id2 = tmp
+            insert_pt2 = tmp2
+        }
+        let group2_count = self.groups[group_id2] as uint
+        
+        for i in 0..group2_count {
+            let box_id = self.box_ids[insert_pt2 + i]
+            self.add_to_group(group_id1, insert_pt1, box_id)
+            insert_pt2 += 1
+        }
+        
+        for i in insert_pt2..(self.box_ids.len() - group2_count) {
+            self.box_ids[i] = self.box_ids[i + group2_count]
+        }
+        self.box_ids.setlen(self.box_ids.len() - group2_count)
+        
+        for i in (group_id2 as uint)..(self.groups.len() - 1) {
+            self.groups[i] = self.groups[i + 1]
+        }
+        self.groups.setlen(self.groups.len() - 1)
+    }
+    
+    fn print_group(self: &Self, group_id: u32) {
+        print("group %u = [", group_id)
+        let start: u32 = 0
+        for i in 0..self.groups.len() {
+            if i as u32 == group_id {
+                break
+            }
+            start += self.groups[i]
+        }
+        let count = self.groups[group_id]
+        for i in 0 as u32 ..count {
+            print(" %d", self.box_ids[i + start])
+        }
+        println(" ]")
+    }
+
+    fn add_connection(self: &Self, id1: u32, id2: u32): uint {
+        let insert_pt1 = 0
+        let insert_pt2 = 0
+        let group_id1 = self.find_group(id1, &insert_pt1)
+        let group_id2 = self.find_group(id2, &insert_pt2)
+        if group_id1 >= 0 and group_id2 < 0 {
+            self.add_to_group(group_id1 as u32, insert_pt1, id2)
+            return 1
+        }
+        if group_id2 >= 0 and group_id1 < 0 {
+            self.add_to_group(group_id2 as u32, insert_pt2, id1)
+            return 1
+        }
+        if (group_id1 >= 0 and group_id2 >= 0) {
+            if (group_id1 != group_id2) {
+                self.merge_groups(group_id1 as u32, insert_pt1, group_id2 as u32, insert_pt2)
+                return 1
+            }
+            return 0
+        }
+        self.create_group(id1, id2)
+        return 1
+    }
+}
+fn bounded_sorted_push(array: [Vec3], dist: u64, i: u32, j: u32, bound: uint): [Vec3] {
+    if array.len() == 0 {
+        array.push(Vec3(dist, i, j))
+        return array
+    }
+    if array.len() >= bound {
+        let last = array[array.len() - 1]
+        if last.x >= dist return array
+    }
+    
+    let left = 0 as i64
+    let right = array.len() as i64 - 1
+    
+    while left <= right {
+        let mid = left + (right - left) / 2
+        let current = array[mid as uint]
+        let mid_dist = current.x
+        
+        if mid_dist < dist {
+            left = mid + 1
+        } else {
+            right = mid - 1
+        }
+    }
+    
+    array.insert(left as uint, Vec3(dist, i, j))
+    if array.len() >= bound {
+        array.setlen(array.len() - 1)
+    }
+    return array
+    
+}
+fn parse(file: [u8]): [Vec3] {
+    let vecs: [Vec3] = []
+    let next_num_start = 0
+    let set_x = true
+    let working_vec3 = Vec3(0, 0, 0)
+    file = ensure_trailing_char(file, '\n')
+    for i in 0..file.len() {
+        when file[i] {
+            '\n' -> {
+                working_vec3.z = u32_parse(&file[next_num_start], i - next_num_start)
+                vecs.push(working_vec3)
+                next_num_start = i + 1
+                set_x = true
+            }
+            ',' -> {
+                let num = u32_parse(&file[next_num_start], i - next_num_start)
+                if set_x {
+                    working_vec3.x = num as u64
+                    set_x = false
+                } else {
+                    working_vec3.y = num
+                }
+                next_num_start = i + 1
+            }
+            else -> {}
+        }
+    }
+    return vecs
+}
+fn solve(part: uint, file: [u8]) {
+    let vecs = parse(file)
+
+    const closest_max = when part  {
+        1 -> 1000
+        2 -> 6250 // Arbitirary large number to bind my array for part2
+        else -> {
+            assert(false, "Invalid part")
+            0
+        }
+    }
+    
+    let distance_array: [Vec3] = []
+    distance_array.reserve(closest_max)
+    let connected = GroupConnector([], [])
+    for i in 0..vecs.len() {
+        for j in (i + 1)..vecs.len() {
+            let vec3i = &vecs[i]
+            let vec3j = &vecs[j]
+            let dist = vec3i.dist(vec3j)
+            distance_array = bounded_sorted_push(distance_array, dist, i as u32, j as u32, closest_max)
+        }
+    }
+
+    connected.groups.reserve(vecs.len())
+    connected.box_ids.reserve(vecs.len())
+
+    let last_unconnected: [u32 * 2]
+    let connections = 1
+    for i in 0..distance_array.len() {
+        if connections >= closest_max break
+        let dist_vec = &distance_array[i]
+        connections += connected.add_connection(dist_vec.y as u32, dist_vec.z as u32)
+        last_unconnected[0] = dist_vec.y
+        last_unconnected[1] = dist_vec.z
+        if connected.box_ids.len() == vecs.len() { // fully connected
+            break
+        }
+    }
+
+    if part == 2 {
+        assert(connected.box_ids.len() == vecs.len(), "increase closest_max")
+        let one = vecs[last_unconnected[0]]
+        let two = vecs[last_unconnected[1]]
+        println("part 2 answer is %zu", one.x * two.x)
+    } else {
+        let start: u32 = 0
+        let largest: [u32 * 3]
+        largest[0] = 0
+        largest[1] = 0
+        largest[2] = 0
+        for i in 0..connected.groups.len() {
+            let size = connected.groups[i]
+            start += size
+            for j in 0..largest.len() {
+                if largest[j] < size {
+                    let last = largest[j]
+                    largest[j] = size
+                    size = last
+                }
+            }
+        }
+        println("part 1 answer = %zu", largest[0] * largest[1] * largest[2])
+    }
+
+    distance_array.free()
+    file.free()
+    vecs.free()
+    connected.groups.free()
+    connected.box_ids.free()
+}
+
+fn main(): i32 {
+    let file_path = str.from_cstr("out.txt")
+    when File.read_all(&file_path) {
+        FileOpenError | FileReadError -> {
+            println("error reading file %.*s", file_path.len(), file_path.raw())
+        }
+        FileOpenSuccess(contents) -> {
+            solve(2, contents)
+            return 0
+        }
+    }
+}

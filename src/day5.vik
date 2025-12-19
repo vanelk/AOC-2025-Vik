@@ -1,0 +1,107 @@
+import "../../../src/libvik/prelude.vik"
+import File, FileResult in "../../../src/libvik/file.vik"
+import uint_parse in "./common.vik"
+
+fn push_range(ranges: [uint], start: uint, end: uint): [uint] {
+    let merged_start = start
+    let merged_end = end
+    let write_idx = 0
+    
+    for i in 0..(ranges.len() / 2) {
+        let range_start = ranges[i * 2]
+        let range_end = ranges[i * 2 + 1]
+        
+        if end < range_start or start > range_end {
+            ranges[write_idx * 2] = range_start
+            ranges[write_idx * 2 + 1] = range_end
+            write_idx += 1
+        } else {
+            if range_start < merged_start {
+                merged_start = range_start
+            }
+            if range_end > merged_end {
+                merged_end = range_end
+            }
+        }
+    }
+    
+    ranges.setlen(write_idx * 2)
+    
+    ranges.push(merged_start)
+    ranges.push(merged_end)
+    
+    return ranges
+}
+
+fn in_ranges(ranges: [uint], num: uint): bool {
+    for i in 0..(ranges.len() / 2) {
+        let range_start = ranges[i * 2]
+        let range_end = ranges[i * 2 + 1]
+
+        if num in range_start..=range_end return true
+    }
+    return false
+}
+
+fn total_range_size(ranges: [uint]): uint {
+    let answer = 0
+    for i in 0..(ranges.len() / 2) {
+        let range_start = ranges[i * 2]
+        let range_end = ranges[i * 2 + 1]
+        answer += (range_end - range_start + 1)
+    }
+    return answer
+}
+
+fn solve(part: uint, file: [u8]) {
+    let answer = 0, last_dash = 0, last_newline = -1
+    let ranges: [uint] = []
+
+    for i in 0..file.len() {
+        when file[i] {
+            '\n' -> {
+                if (i == last_newline + 1) break
+                
+                let start = uint_parse(&file[last_newline + 1], last_dash - last_newline - 1)
+                let end = uint_parse(&file[last_dash + 1], i - last_dash - 1)
+                
+                ranges = push_range(ranges, start, end)
+                last_newline = i
+            }
+            '-' -> {
+                last_dash = i
+            }
+            else -> {}
+        }
+    }
+    if part == 2 {
+        println("part2 answer = %zu", total_range_size(ranges))
+        return
+    }
+
+    last_newline += 1
+    for i in (last_newline + 1)..file.len() {
+        when file[i] {
+            '\n' -> {
+                let num = uint_parse(&file[last_newline + 1], i - last_newline - 1)
+                if in_ranges(ranges, num) answer += 1
+                last_newline = i
+            }
+            else -> {}
+        }
+    }
+    println("answer is %zu", answer)
+}
+
+fn main(): i32 {
+    let file_path = str.from_cstr("out.txt")
+    when File.read_all(&file_path) {
+        FileOpenError | FileReadError -> {
+            println("error reading file %.*s", file_path.len(), file_path.raw())
+        }
+        FileOpenSuccess(contents) -> {
+            solve(2, contents)
+            return 0
+        }
+    }
+}
