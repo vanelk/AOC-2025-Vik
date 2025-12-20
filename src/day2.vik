@@ -1,9 +1,9 @@
 import "../../../src/libvik/prelude.vik"
 import File, FileResult in "../../../src/libvik/file.vik"
-import u32_parse, ensure_trailing_char in "common.vik"
+import uint_parse, ensure_trailing_char in "common.vik"
 
-// Upper bound log function instead of generalized: Basically works till u32.MAX
-fn uilog10(n: u32): u32 {
+// Upper bound log function instead of generalized
+fn log10(n: uint): u8 {
     if n == 0 return 0
     if n < 10 return 1
     if n < 100 return 2
@@ -17,76 +17,79 @@ fn uilog10(n: u32): u32 {
     return 10
 }
 
-// Fast exponentiation using exponentiation by squaring
-fn uipow(b: u32, e: u32): u32 {
-    if e == 0 { return 1 }
-    if e == 1 { return b }
-    
-    let answer: u32 = 1
-    let base = b
-    let exp = e
-    
-    while exp > 0 {
-        if exp % 2 == 1 {
-            answer *= base
-        }
-        base *= base
-        exp /= 2
+fn pow10(exp: u8): uint {
+    return when exp {
+        0 -> 1
+        1 -> 10
+        2 -> 100
+        3 -> 1000
+        4 -> 10000
+        5 -> 100000
+        6 -> 1000000
+        7 -> 10000000
+        8 -> 100000000
+        9 -> 1000000000
+        10 -> 10000000000
+        else -> 10000000000
     }
-    
-    return answer
 }
 
-fn is_invalid_id(num: u32): bool {
-    let digs_count = uilog10(num)
-    if digs_count % 2 == 0 {
-        let mpow =  uipow(10, digs_count / 2)
-
-        let pt1 = num / mpow
-        let pt2 = num % mpow
-        return pt1 == pt2
-    }
-    return false
-}
-fn check_pattern(num: u32, pattern_len: u32, digs_count: u32): bool {
-    let base10_pow = uipow(10, pattern_len)
+fn check_pattern(num: uint, pattern_len: u8, digs_count: u8): bool {
+    let base10_pow = pow10(pattern_len)
     let repeated_seq = num % base10_pow
     let partition_size = digs_count / pattern_len
-    let working_num = num / base10_pow
+    let working_num = repeated_seq
     
-    for _ in (1 as u32)..partition_size {
-        if (working_num % base10_pow) != repeated_seq {
-            return false
-        }
-        working_num /= base10_pow
+    for _ in (1 as u8)..partition_size {
+        working_num = (working_num * base10_pow) + repeated_seq
     }
     
-    return true
+    return num == working_num
 }
 
-// Not worth squeezing more perf but; upto sqrt(digs_count) instead of /2 as it technically captures of the divisors of digs_count mathematically
-fn is_invalid_id2(num: u32): bool {
-    let digs_count = uilog10(num)
-    
-    for i in (1 as u32)..=(digs_count / 2) {
-        if digs_count % i != 0 continue
-        if check_pattern(num, i, digs_count) return true
+fn is_invalid_id2(num: uint): bool {
+    let digs_count = log10(num)
+
+    // Primes only divisor is 1
+    if digs_count is 2 | 3 | 5 | 7 {
+        return check_pattern(num, 1, digs_count)
+    }
+
+    // Start at 2 as primes is handled above
+    let divisor: u8 = 2
+    let div_squared = divisor * divisor
+    while div_squared <= digs_count {
+        if (digs_count % divisor == 0) {
+            if check_pattern(num, divisor, digs_count) return true
+
+            let complement = digs_count / divisor
+            if complement != divisor {
+                if check_pattern(num, complement, digs_count) return true
+            }
+        }
+        divisor += 1
+        div_squared = divisor * divisor
     }
     
     return false
 }
 
-fn dispatch_is_invalid_id(part: uint, num: u32): bool {
+fn dispatch_is_invalid_id(part: uint, num: uint): bool {
     when part {
-        1 -> return is_invalid_id(num)
+        1 -> {
+            let digs_count = log10(num)
+            if digs_count % 2 != 0 return false
+            
+            return check_pattern(num, digs_count / 2, digs_count)
+        }
         2 -> return is_invalid_id2(num)
         else -> assert(false, "unreachable")
     }
     return false
 }
 
-fn count_invalid_ids_in_range(part: uint, start: u32, end: u32): u32 {
-    let count: u32 = 0
+fn count_invalid_ids_in_range(part: uint, start: uint, end: uint): uint {
+    let count = 0
     for num in start..=end {
         if dispatch_is_invalid_id(part, num) {
             count += num
@@ -98,13 +101,14 @@ fn count_invalid_ids_in_range(part: uint, start: u32, end: u32): u32 {
 fn solve(part: uint, file: [u8]) {
     file = ensure_trailing_char(file, ',')
     let last_comma = -1, last_dash = 0
-    let answer: u32 = 0
+    let answer = 0
     for i in 0..file.len() {
         when file[i] {
             ',' -> {
-                answer += count_invalid_ids_in_range(part,
-                    u32_parse(&file[last_comma + 1], last_dash - (last_comma + 1)), 
-                    u32_parse(&file[last_dash + 1], i - (last_dash + 1))
+                answer += count_invalid_ids_in_range(
+                    part,
+                    uint_parse(&file[last_comma + 1], last_dash - (last_comma + 1)), 
+                    uint_parse(&file[last_dash + 1], i - (last_dash + 1))
                 )
                 last_comma = i
             }
@@ -115,7 +119,7 @@ fn solve(part: uint, file: [u8]) {
         }
         
     }
-    println("answer = %u", answer)
+    println("answer = %zu", answer)
 }
 
 fn main(): i32 {
