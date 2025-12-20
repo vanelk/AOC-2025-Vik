@@ -272,7 +272,7 @@ fn solve_for_free_variables(mat: &Matrix, free_vars: &u32, start: uint, num_free
     let best: i32 = 0x7FFFFFFF
     let col = *free_vars.offset(start)
     
-    // Find valid range - use Python's logic
+    // Technically aribitrary large range tried to make calculate it from input and failed :(
     let max_val: i32 = 142
     
     for row in (0 as u32)..mat.rows {
