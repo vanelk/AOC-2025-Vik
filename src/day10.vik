@@ -319,7 +319,10 @@ fn solve_for_free_variables(mat: &Matrix, free_vars: &u32, start: uint, num_free
             }
         }
     }
-
+    // Track if current solutions are increasing and just break if that is the case
+    let last_sol: i32 = 0
+    let increasing = 0
+    
     // Try values from 0 to max_val
     for val in (0 as i32)..=max_val {
         // Make a copy of mat
@@ -335,7 +338,6 @@ fn solve_for_free_variables(mat: &Matrix, free_vars: &u32, start: uint, num_free
             }
         }
         let answer = solve_for_free_variables(&mat_copy, free_vars, start + 1, num_free_vars)
-        
         if answer == 0x7FFFFFFF continue
         
         let total = answer + val
@@ -343,6 +345,15 @@ fn solve_for_free_variables(mat: &Matrix, free_vars: &u32, start: uint, num_free
         if total < best {
             best = total
             *free_vars.offset(num_free_vars + start) = val as u32
+        }
+
+        // Small optimization
+        if answer > last_sol {
+            last_sol = answer
+            increasing += 1
+            if increasing == 2 {
+                break
+            }
         }
     }
     
