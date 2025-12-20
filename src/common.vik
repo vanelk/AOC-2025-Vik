@@ -5,30 +5,6 @@ fn u32_parse(ptr: &u8, len: uint): u32 {
     }
     return answer
 }
-fn uilog10(n: uint): uint {
-    let answer = 0
-    while n != 0 {
-        n /= 10
-        answer += 1
-    }
-    return answer
-}
-
-fn uipow(b: uint, e: uint): uint {
-    let result = 1
-    let base = b
-    let exp = e
-
-    while exp != 0 {
-        if (exp & 1) != 0 {
-            result *= base
-        }
-        base *= base
-        exp >>= 1
-    }
-
-    return result
-}
 
 fn uint_parse(ptr: &u8, len: uint): uint {
     let answer = 0
