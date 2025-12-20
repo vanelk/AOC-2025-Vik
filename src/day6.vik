@@ -78,32 +78,27 @@ fn solve_pt1(file: [u8]): uint {
     // Heurestics; Assuming that we don't exceed that
     let problems_compact: [uint * 1024]
     let problem_ops: [u8 * 1024]
-    let last_digit = 0, start_of_num = 0
-    let _ = 0, row = 0, col = 0
+    let last_digit = 0, start_of_num = 0, _ = 0, row = 0, col = 0
     let cols = extract_operators_and_dims(file, &problem_ops[0], &_, &_)
 
     for i in 0..file.len() {
         let char = file[i]
         when char {
             '\n' | ' '-> {
-                if last_digit != i - 1 {
-                    start_of_num = i + 1
-                    continue
+                if last_digit == i - 1 {
+                    let num = uint_parse(&file[start_of_num], i - start_of_num)
+                    problems_compact[col] = when row {
+                        0 -> num 
+                        else -> apply_operation(problem_ops[cols - col - 1], problems_compact[col], num)
+                    }
+                    if char == '\n' {
+                        row += 1
+                        col = 0
+                    } else {
+                        col += 1
+                    }
                 }
-                let num = uint_parse(&file[start_of_num], i - start_of_num)
-                
-                problems_compact[col] = when row {
-                    0 -> num 
-                    else -> apply_operation(problem_ops[cols - col - 1], problems_compact[col], num)
-                }
-                
                 start_of_num = i + 1
-                if char == '\n' {
-                    row += 1
-                    col = 0
-                } else {
-                    col += 1
-                }
             }
             '0'..='9' -> last_digit = i
             '+' | '*' -> break
